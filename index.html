@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Number Typing Practice</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --muted:#94a3b8;
+      --text:#e5e7eb;
+      --accent:#38bdf8;
+      --ok:#22c55e;
+      --bad:#ef4444;
+      --active:#a3a3a3;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 600px at 30% -10%, #0b1329 0%, var(--bg) 60%);
+      color:var(--text);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .app{ width:min(1100px, 94vw);}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,0.06);
+      border-radius:20px; padding:22px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    h1{font-weight:750; margin:0 0 8px;}
+    .sub{color:var(--muted); margin-bottom:18px}
+    .controls{display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:16px}
+    .btn{
+      padding:0 14px; border-radius:12px; border:1px solid rgba(255,255,255,.12);
+      background:#0b1226; color:var(--text); cursor:pointer; font-weight:600;
+    }
+    .btn:hover{filter:brightness(1.1)}
+    .field{display:flex; align-items:center; gap:8px; padding:0 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:#0b1226;}
+    .field input{width:68px; background:transparent; border:none; outline:none; color:var(--text); font-weight:700; text-align:center; font-size:16px}
+    .sequence{
+      user-select:none; font-variant-numeric: tabular-nums;
+      display:flex; flex-wrap:wrap; gap:6px 10px; padding:18px;
+      background:rgba(255,255,255,0.02); border-radius:16px; border:1px dashed rgba(255,255,255,.12);
+      min-height:92px;
+    }
+    .digit{
+      font-size:42px; padding:4px 6px; border-bottom:4px solid transparent; border-radius:10px; cursor:pointer;
+      transition:border-color .12s ease;
+    }
+    .digit.active{ border-bottom-color: var(--active); }
+    .digit.correct{ border-bottom-color: var(--ok); }
+    .digit.wrong{ border-bottom-color: var(--bad); animation:shake .18s linear; }
+    @keyframes shake{ 25%{ transform: translateX(-2px) } 50%{ transform: translateX(2px) } 75%{ transform: translateX(-1px) } }
+    .stats{ display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; color:var(--muted)}
+    .stats b{color:var(--text)}
+    .footer{margin-top:16px; color:var(--muted); font-size:14px}
+    .modal{
+      position:fixed; inset:0; background:rgba(0,0,0,.6);
+      display:flex; align-items:center; justify-content:center;
+      visibility:hidden; opacity:0; transition:.2s;
+    }
+    .modal.active{ visibility:visible; opacity:1; }
+    .modal-card{
+      background:var(--panel); padding:40px; border-radius:20px; text-align:center; max-width:600px; width:90%; box-shadow:0 10px 30px rgba(0,0,0,.5);
+    }
+    .modal-card h2{margin-top:0; font-size:28px}
+    .modal-card p{font-size:18px; margin:16px 0}
+    .modal-card .btn{margin:6px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <h1>Number Typing Practice</h1>
+      <div class="sub">Type digits (0–9). Wrong key marks red. Finish sequence to see review.</div>
+
+      <div class="controls">
+        <div class="field"><label for="len">Length</label><input id="len" type="number" min="1" max="500" value="40"></div>
+        <button class="btn" id="newSeq">New sequence</button>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+
+      <div id="sequence" class="sequence"></div>
+
+      <div class="stats">
+        <div>Index: <b id="idx">0</b></div>
+        <div>Correct: <b id="ok">0</b></div>
+        <div>Errors: <b id="err">0</b></div>
+        <div>Accuracy: <b id="acc">100%</b></div>
+        <div>Timer: <b id="time">0.0s</b></div>
+      </div>
+      <div class="footer">Click digits to select. Only numbers count.</div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="resultModal" class="modal">
+    <div class="modal-card">
+      <h2>Session Complete</h2>
+      <p id="resultSummary"></p>
+      <div>
+        <button class="btn" id="retryBtn">Practice Mistakes</button>
+        <button class="btn" id="nextBtn">Next Sequence</button>
+        <button class="btn" id="closeModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = s=>document.querySelector(s);
+    const seqEl=$('#sequence');
+    const idxEl=$('#idx'),okEl=$('#ok'),errEl=$('#err'),accEl=$('#acc'),timeEl=$('#time');
+    const modal=$('#resultModal'),summary=$('#resultSummary');
+    let digits=[],idx=0,ok=0,err=0,startedAt=null,timerId=null;
+    let mistakes=[];
+
+    function randDigits(n){return Array.from({length:n},()=>Math.floor(Math.random()*10));}
+    function renderSequence(){seqEl.innerHTML='';digits.forEach((d,i)=>{let s=document.createElement('span');s.className='digit';s.textContent=d;s.dataset.i=i;s.onclick=()=>setActive(i,true);seqEl.appendChild(s);});setActive(0,false);}
+    function setActive(i,userClick){[...seqEl.children].forEach(e=>e.classList.remove('active'));const el=seqEl.children[i];if(!el)return;el.classList.add('active');idx=i;idxEl.textContent=idx;if(startedAt===null && (userClick || true)) startTimer();}
+    function startTimer(){startedAt=performance.now();timerId=setInterval(()=>{timeEl.textContent=((performance.now()-startedAt)/1000).toFixed(1)+'s';},100);}
+    function stopTimer(){if(timerId){clearInterval(timerId);timerId=null;}}
+    function updateStats(){okEl.textContent=ok;errEl.textContent=err;let t=ok+err;accEl.textContent=t?Math.round(ok/t*100)+'%':'100%';}
+    function flashWrong(el){el.classList.add('wrong');setTimeout(()=>el.classList.remove('wrong'),180);}
+    function markCorrect(el){el.classList.add('correct');}
+    function handleKey(e){const key=e.key;if(!/^[0-9]$/.test(key)){const a=seqEl.children[idx];if(a){flashWrong(a);err++;mistakes.push(digits[idx]);updateStats();}return;}const a=seqEl.children[idx];if(!a)return;if(startedAt===null) startTimer();const need=String(digits[idx]);if(key===need){ok++;markCorrect(a);let next=idx+1;if(next<digits.length){setActive(next,false);}else{[...seqEl.children].forEach(el=>el.classList.remove('active'));stopTimer();showResults();}}else{err++;flashWrong(a);mistakes.push(digits[idx]);}updateStats();}
+    function newSequence(){const n=Math.max(1,Math.min(500,Number($('#len').value)||40));digits=randDigits(n);idx=ok=err=0;mistakes=[];startedAt=null;stopTimer();timeEl.textContent='0.0s';updateStats();renderSequence();}
+    function resetProgress(){idx=ok=err=0;mistakes=[];updateStats();[...seqEl.children].forEach(e=>e.classList.remove('correct','wrong'));setActive(0,false);startedAt=null;stopTimer();timeEl.textContent='0.0s';}
+    function showResults(){let time=timeEl.textContent;summary.textContent=`Time: ${time} | Correct: ${ok} | Errors: ${err}`;modal.classList.add('active');}
+    function closeModal(){modal.classList.remove('active');}
+    function retryMistakes(){if(mistakes.length===0){alert('No mistakes to practice!');return;}digits=[...mistakes];idx=ok=err=0;mistakes=[];startedAt=null;stopTimer();timeEl.textContent='0.0s';updateStats();renderSequence();closeModal();}
+
+    newSequence();
+    document.addEventListener('keydown',handleKey);
+    $('#newSeq').onclick=newSequence;
+    $('#reset').onclick=resetProgress;
+    $('#closeModal').onclick=closeModal;
+    $('#retryBtn').onclick=retryMistakes;
+    $('#nextBtn').onclick=()=>{closeModal();newSequence();};
+  </script>
+</body>
+</html>
