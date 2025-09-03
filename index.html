@@ -137,6 +137,13 @@
     $('#closeModal').onclick=closeModal;
     $('#retryBtn').onclick=retryMistakes;
     $('#nextBtn').onclick=()=>{closeModal();newSequence();};
+    // Listen for Enter key when modal is active to go to next sequence
+    document.addEventListener('keydown', function(e) {
+      if (modal.classList.contains('active') && e.key === 'Enter') {
+        closeModal();
+        newSequence();
+      }
+    });
   </script>
 </body>
 </html>
