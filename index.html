@@ -113,25 +113,140 @@
     const idxEl=$('#idx'),okEl=$('#ok'),errEl=$('#err'),accEl=$('#acc'),timeEl=$('#time');
     const modal=$('#resultModal'),summary=$('#resultSummary');
     let digits=[],idx=0,ok=0,err=0,startedAt=null,timerId=null;
-    let mistakes=[];
+  let mistakes=[];
+  let timerPaused = false;
+  let elapsedTime = 0;
+  let lastKeyTime = null;
+  let pauseTimeoutId = null;
 
     function randDigits(n){return Array.from({length:n},()=>Math.floor(Math.random()*10));}
     function renderSequence(){seqEl.innerHTML='';digits.forEach((d,i)=>{let s=document.createElement('span');s.className='digit';s.textContent=d;s.dataset.i=i;s.onclick=()=>setActive(i,true);seqEl.appendChild(s);});setActive(0,false);}
-    function setActive(i,userClick){[...seqEl.children].forEach(e=>e.classList.remove('active'));const el=seqEl.children[i];if(!el)return;el.classList.add('active');idx=i;idxEl.textContent=idx;if(startedAt===null && (userClick || true)) startTimer();}
-    function startTimer(){startedAt=performance.now();timerId=setInterval(()=>{timeEl.textContent=((performance.now()-startedAt)/1000).toFixed(1)+'s';},100);}
-    function stopTimer(){if(timerId){clearInterval(timerId);timerId=null;}}
+    function setActive(i,userClick) {
+      [...seqEl.children].forEach(e => e.classList.remove('active'));
+      const el = seqEl.children[i];
+      if (!el) return;
+      el.classList.add('active');
+      idx = i;
+      idxEl.textContent = idx;
+      // Timer start removed from here. Timer only starts on first keypress.
+    }
+    function startTimer(){
+      if (timerId) return;
+      startedAt = performance.now();
+      timerId = setInterval(() => {
+        let now = performance.now();
+        let total = elapsedTime + (timerPaused ? 0 : (now - startedAt));
+        timeEl.textContent = (total / 1000).toFixed(1) + 's';
+      }, 100);
+      timerPaused = false;
+    }
+    function stopTimer(){
+      if(timerId){
+        clearInterval(timerId);
+        timerId=null;
+      }
+    }
+    function pauseTimer(){
+      if (!timerPaused && timerId) {
+        let now = performance.now();
+        elapsedTime += now - startedAt;
+        timerPaused = true;
+        startedAt = null;
+      }
+    }
+    function resumeTimer(){
+      if (timerPaused) {
+        startedAt = performance.now();
+        timerPaused = false;
+      }
+    }
     function updateStats(){okEl.textContent=ok;errEl.textContent=err;let t=ok+err;accEl.textContent=t?Math.round(ok/t*100)+'%':'100%';}
     function flashWrong(el){el.classList.add('wrong');setTimeout(()=>el.classList.remove('wrong'),180);}
     function markCorrect(el){el.classList.add('correct');}
-    function handleKey(e){const key=e.key;if(!/^[0-9]$/.test(key)){const a=seqEl.children[idx];if(a){flashWrong(a);err++;mistakes.push(digits[idx]);updateStats();}return;}const a=seqEl.children[idx];if(!a)return;if(startedAt===null) startTimer();const need=String(digits[idx]);if(key===need){ok++;markCorrect(a);let next=idx+1;if(next<digits.length){setActive(next,false);}else{[...seqEl.children].forEach(el=>el.classList.remove('active'));stopTimer();showResults();}}else{err++;flashWrong(a);mistakes.push(digits[idx]);}updateStats();}
-    function newSequence(){const n=Math.max(1,Math.min(500,Number($('#len').value)||40));digits=randDigits(n);idx=ok=err=0;mistakes=[];startedAt=null;stopTimer();timeEl.textContent='0.0s';updateStats();renderSequence();}
-    function resetProgress(){idx=ok=err=0;mistakes=[];updateStats();[...seqEl.children].forEach(e=>e.classList.remove('correct','wrong'));setActive(0,false);startedAt=null;stopTimer();timeEl.textContent='0.0s';}
+    function handleKey(e){
+      const key = e.key;
+      // Only start/resume timer on valid keypress
+      if (/^[0-9]$/.test(key)) {
+        // Only start timer if it has never started before
+        if (startedAt === null && elapsedTime === 0) {
+          startTimer();
+        } else if (timerPaused) {
+          resumeTimer();
+        }
+        lastKeyTime = performance.now();
+        if (pauseTimeoutId) clearTimeout(pauseTimeoutId);
+        pauseTimeoutId = setTimeout(() => {
+          pauseTimer();
+        }, 3000);
+      }
+      if (!/^[0-9]$/.test(key)) {
+        const a = seqEl.children[idx];
+        if (a) {
+          flashWrong(a);
+          err++;
+          mistakes.push(digits[idx]);
+          updateStats();
+        }
+        return;
+      }
+      const a = seqEl.children[idx];
+      if (!a) return;
+      const need = String(digits[idx]);
+      if (key === need) {
+        ok++;
+        markCorrect(a);
+        let next = idx + 1;
+        if (next < digits.length) {
+          setActive(next, false);
+        } else {
+          [...seqEl.children].forEach(el => el.classList.remove('active'));
+          stopTimer();
+          if (pauseTimeoutId) clearTimeout(pauseTimeoutId);
+          showResults();
+        }
+      } else {
+        err++;
+        flashWrong(a);
+        mistakes.push(digits[idx]);
+      }
+      updateStats();
+    }
+    function newSequence(){
+      const n = Math.max(1, Math.min(500, Number($('#len').value) || 40));
+      digits = randDigits(n);
+      idx = ok = err = 0;
+      mistakes = [];
+      startedAt = null;
+      stopTimer();
+      elapsedTime = 0;
+      timerPaused = false;
+      lastKeyTime = null;
+      if (pauseTimeoutId) clearTimeout(pauseTimeoutId);
+      timeEl.textContent = '0.0s';
+      updateStats();
+      renderSequence();
+    }
+    function resetProgress(){
+      idx = ok = err = 0;
+      mistakes = [];
+      updateStats();
+      [...seqEl.children].forEach(e => e.classList.remove('correct', 'wrong'));
+      setActive(0, false);
+      startedAt = null;
+      stopTimer();
+      elapsedTime = 0;
+      timerPaused = false;
+      lastKeyTime = null;
+      if (pauseTimeoutId) clearTimeout(pauseTimeoutId);
+      timeEl.textContent = '0.0s';
+    }
     function showResults(){let time=timeEl.textContent;summary.textContent=`Time: ${time} | Correct: ${ok} | Errors: ${err}`;modal.classList.add('active');}
     function closeModal(){modal.classList.remove('active');}
     function retryMistakes(){if(mistakes.length===0){alert('No mistakes to practice!');return;}digits=[...mistakes];idx=ok=err=0;mistakes=[];startedAt=null;stopTimer();timeEl.textContent='0.0s';updateStats();renderSequence();closeModal();}
 
     newSequence();
-    document.addEventListener('keydown',handleKey);
+  // Do not start timer on page load, only on first keypress
+  document.addEventListener('keydown',handleKey);
     $('#newSeq').onclick=newSequence;
     $('#reset').onclick=resetProgress;
     $('#closeModal').onclick=closeModal;
